@@ -2,7 +2,7 @@ torch
 tensorboard
 numpy
 transformers
-datasets
+datasets==4.2.0
 tiktoken
 wandb
 tqdm
