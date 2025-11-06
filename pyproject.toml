@@ -1,0 +1,27 @@
+[project]
+name = "nanoGPT"
+version = "0.1.0"
+description = "Interactive training and model experimentation"
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    "torch>=2.8,<3",
+    "tensorboard",
+    "numpy",
+    "transformers>=4.53.0,<=4.57.0",
+    "datasets>=3.0.0,<4.3.0",
+    "tiktoken",
+    "wandb",
+    "tqdm>=4.66.0,<5"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+cache-dir = ".uv_cache"
+
+[tool.setuptools]
+py-modules = ["train", "model", "configurator", "bench", "sample"]

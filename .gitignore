@@ -10,3 +10,5 @@ __pycache__/
 input.txt
 env/
 venv/
+*.egg-info/
+nanoGPT.egg-info/

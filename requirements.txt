@@ -1,8 +1,0 @@
-torch
-tensorboard
-numpy
-transformers
-datasets
-tiktoken
-wandb
-tqdm
