@@ -103,8 +103,18 @@ else:
 tokens_per_iter = gradient_accumulation_steps * ddp_world_size * batch_size * block_size
 print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
+# On FlexAI the platform collects checkpoints from FLEXAI_OUTPUT_CHECKPOINT_DIR
+# and offers a resumed one at FLEXAI_INPUT_CHECKPOINT_DIR; `out_dir` is inside the
+# container and is thrown away with it. Writing to out_dir there means the run
+# finishes, reports success, and produces no checkpoint -- the failure is silent
+# and only shows up as an empty `flexai checkpoint list`. Unset (running nanoGPT
+# standalone), both fall back to out_dir and behaviour is unchanged.
+checkpoint_out_dir = os.environ.get("FLEXAI_OUTPUT_CHECKPOINT_DIR") or out_dir
+checkpoint_in_dir = os.environ.get("FLEXAI_INPUT_CHECKPOINT_DIR") or out_dir
+
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
+    os.makedirs(checkpoint_out_dir, exist_ok=True)
 torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
@@ -160,9 +170,9 @@ if init_from == 'scratch':
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
 elif init_from == 'resume':
-    print(f"Resuming training from {out_dir}")
+    print(f"Resuming training from {checkpoint_in_dir}")
     # resume training from a checkpoint.
-    ckpt_path = os.path.join(out_dir, 'ckpt.pt')
+    ckpt_path = os.path.join(checkpoint_in_dir, 'ckpt.pt')
     checkpoint = torch.load(ckpt_path, map_location=device)
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
@@ -250,6 +260,15 @@ if wandb_log and master_process:
     import wandb
     wandb.init(project=wandb_project, name=wandb_run_name, config=config)
 
+# Bound on every rank before the master-only block below. Without this, the
+# non-master ranks never assign `writer` at all, and the unconditional
+# `if writer:` after the training loop raises
+#     NameError: name 'writer' is not defined
+# on every rank except 0 -- so ANY ddp (multi-GPU) run dies at the very end,
+# after training has completed, and the job is reported as failed. A
+# single-process run never reaches it because master_process is then True.
+writer = None
+
 # Only initialize TensorBoard logging on the master process.
 # If `FLEXAI_TENSORBOARD_LOG_DIR` is not set, skip logging entirely.
 if master_process:
@@ -304,8 +323,8 @@ while True:
                     'best_val_loss': best_val_loss,
                     'config': config,
                 }
-                print(f"saving checkpoint to {out_dir}")
-                torch.save(checkpoint, os.path.join(out_dir, 'ckpt.pt'))
+                print(f"saving checkpoint to {checkpoint_out_dir}")
+                torch.save(checkpoint, os.path.join(checkpoint_out_dir, 'ckpt.pt'))
     if iter_num == 0 and eval_only:
         break
 
